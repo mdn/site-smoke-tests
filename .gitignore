@@ -1,0 +1,4 @@
+node_modules/
+report.md
+lighthouse-report.report.json
+lighthouse-report.report.html

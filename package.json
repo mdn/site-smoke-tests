@@ -1,0 +1,11 @@
+{
+  "name": "mdn-site-smoke-tests",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "lighthouse": "13.4.1"
+  }
+}

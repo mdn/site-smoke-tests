@@ -1,2 +1,23 @@
-# site-smoke-tests
-Smoke tests for MDN production and stage
+# MDN site smoke tests
+
+This repository runs a Lighthouse smoke test against MDN. It records category scores and every audit below full score. There are no score thresholds. A run fails when Lighthouse cannot produce a valid report, reports a runtime error, or finds an unsuccessful HTTP status for the page.
+
+| Trigger | URL | Result |
+| --- | --- | --- |
+| Daily schedule, 09:17 UTC | `https://developer.mozilla.org/en-US/` | Actions summary and one persistent issue |
+| Pull request | `https://developer.allizom.org/en-US/` | Actions summary and job log |
+| Manual dispatch | Supplied URL, defaulting to stage | Actions summary and job log |
+
+The manual URL must use HTTPS on `developer.mozilla.org` or `developer.allizom.org`, on port 443. Credentials and fragments are rejected. The audit checks HTTP redirect targets before starting Chrome and verifies the final URL reported by Lighthouse. The URL is passed as an environment variable, never interpolated into a shell command.
+
+The scheduled run creates or updates the issue containing `<!-- mdn-site-smoke-report -->`. It reopens a closed issue with that marker. If more than one issue has the marker, the run fails so the duplicates can be resolved manually. Only the scheduled job has `issues: write`; the other job has `contents: read`.
+
+Lighthouse is pinned through `package-lock.json`. The workflow pins `actions/checkout` to v7.0.1, `actions/setup-node` to v7.0.0, and `actions/upload-artifact` to v7.0.1 by commit SHA. Markdown, JSON, and HTML reports are uploaded as a seven-day artifact, including the Markdown failure report when Lighthouse stops early. The report also appears in the Actions run summary and log. The scheduled issue contains the latest report and a link to its run.
+
+To run an audit locally after `npm ci`:
+
+```sh
+AUDIT_URL=https://developer.allizom.org/en-US/ node scripts/run-audit.mjs
+```
+
+The workflow uses Chrome installed on the GitHub hosted Ubuntu runner. Local runs need Chrome available to Lighthouse.

@@ -1,0 +1,88 @@
+name: MDN Lighthouse smoke test
+
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: MDN production or stage HTTPS URL to audit
+        required: true
+        type: string
+        default: https://developer.allizom.org/en-US/
+
+concurrency:
+  group: lighthouse-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  production:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Audit production
+        id: audit
+        run: node scripts/run-audit.mjs
+        env:
+          AUDIT_URL: https://developer.mozilla.org/en-US/
+          REPORT_PATH: report.md
+      - name: Update persistent issue
+        if: ${{ always() && hashFiles('report.md') != '' }}
+        run: node scripts/upsert-issue.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPORT_PATH: report.md
+      - name: Upload reports
+        if: ${{ always() && hashFiles('report.md') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lighthouse-production
+          path: |
+            report.md
+            lighthouse-report.report.json
+            lighthouse-report.report.html
+          retention-days: 7
+
+  preview:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Audit stage or supplied URL
+        run: node scripts/run-audit.mjs
+        env:
+          AUDIT_URL: ${{ github.event_name == 'pull_request' && 'https://developer.allizom.org/en-US/' || inputs.url }}
+          REPORT_PATH: report.md
+      - name: Upload reports
+        if: ${{ always() && hashFiles('report.md') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lighthouse-preview
+          path: |
+            report.md
+            lighthouse-report.report.json
+            lighthouse-report.report.html
+          retention-days: 7
