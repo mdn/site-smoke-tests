@@ -4,6 +4,7 @@ const marker = '<!-- mdn-site-smoke-report -->';
 const title = 'Daily MDN production Lighthouse audit';
 const repository = process.env.GITHUB_REPOSITORY;
 const token = process.env.GITHUB_TOKEN;
+const pagesUrl = process.env.PAGES_URL;
 
 if (!repository || !/^[^/]+\/[^/]+$/.test(repository) || !token) {
   throw new Error('GITHUB_REPOSITORY and GITHUB_TOKEN are required');
@@ -24,7 +25,10 @@ async function api(path, options = {}) {
 }
 
 const report = await readFile(process.env.REPORT_PATH || 'report.md', 'utf8');
-const body = `${marker}\n\n${report}`;
+const pagesLink = pagesUrl
+  ? `[View full Lighthouse report](${pagesUrl})`
+  : 'The full Lighthouse report was not published to GitHub Pages for this run.';
+const body = `${marker}\n\n${pagesLink}\n\n${report}`;
 const matches = [];
 for (let page = 1; ; page += 1) {
   const issues = await api(`/issues?state=all&per_page=100&page=${page}`);

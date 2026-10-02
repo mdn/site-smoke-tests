@@ -21,9 +21,10 @@ jobs:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    outputs:
+      report_ready: ${{ steps.pages_report.outcome == 'success' }}
     permissions:
       contents: read
-      issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,17 +35,19 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - name: Audit production
-        id: audit
         run: node scripts/run-audit.mjs
         env:
           AUDIT_URL: https://developer.mozilla.org/en-US/
           REPORT_PATH: report.md
-      - name: Update persistent issue
+      - name: Prepare Pages report
+        id: pages_report
         if: ${{ always() && hashFiles('report.md') != '' }}
-        run: node scripts/upsert-issue.mjs
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPORT_PATH: report.md
+        run: node scripts/build-pages.mjs
+      - name: Upload Pages artifact
+        if: ${{ always() && steps.pages_report.outcome == 'success' }}
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: pages
       - name: Upload reports
         if: ${{ always() && hashFiles('report.md') != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -55,6 +58,50 @@ jobs:
             lighthouse-report.report.json
             lighthouse-report.report.html
           retention-days: 7
+
+  deploy-pages:
+    if: ${{ always() && github.event_name == 'schedule' && needs.production.outputs.report_ready == 'true' }}
+    needs: production
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  update-issue:
+    if: ${{ always() && github.event_name == 'schedule' && needs.production.outputs.report_ready == 'true' }}
+    needs: [production, deploy-pages]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: lighthouse-production
+      - name: Update persistent issue
+        run: node scripts/upsert-issue.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPORT_PATH: report.md
+          PAGES_URL: ${{ needs.deploy-pages.outputs.page_url }}
 
   preview:
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
